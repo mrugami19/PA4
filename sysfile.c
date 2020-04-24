@@ -444,5 +444,23 @@ sys_pipe(void)
 }
 
 int sys_lseek(void){
+  struct file *f;
+  uint n;
+
+  // get params
+  int fd = argfd(0, 0, &f);
+  int offs = argint(1, (int*)&n);
+
+  if(fd < 0 || offs < 0)
+    return -1;
+
+  //offset must be within file
+  if(n < 0 || n > f->ip->size)
+    return -1;
+  else{
+    f->off = n;
+  }
+
   return 0;
+
 }

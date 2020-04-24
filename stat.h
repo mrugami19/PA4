@@ -8,4 +8,8 @@ struct stat {
   uint ino;    // Inode number
   short nlink; // Number of links to file
   uint size;   // Size of file in bytes
+  struct extents_details{
+    uint addr:24, // Extent Pointers
+         len:8 ;  // Extent Length 
+  }extents[12];
 };

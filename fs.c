@@ -369,11 +369,59 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
+
+// The first 24 bits are addres	
+#define EXT_ADDR(addr) (addr >> (32-24))	
+// The last byte is the length	
+#define EXT_LEN(addr) (addr & 0x00ff)	
+// Generate addres from block number and length	
+#define GEN_ADDR(bn,len) (bn << 8 | len)
+
 static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
   struct buf *bp;
+
+
+if (ip->type == T_EXT){	
+    // Check if the block is already in use	
+    int i = 0;	
+    uint currLen = 0;	
+    //cprintf("Requested block:%d.", bn);	
+    while(ip->addrs[i]){	
+      uint length = EXT_LEN(ip->addrs[i]);	
+      if (bn >= currLen && bn < length + currLen){	
+            //cprintf("Existing block found: %d; Addr:%d; Len: %d\n", bn, EXT_ADDR(ip->addrs[i]), EXT_LEN(ip->addrs[i]), i);	
+            addr = EXT_ADDR(ip->addrs[i]) +  bn - currLen;	
+            return addr;	
+      }	
+      currLen += length;	
+      i++;	
+      if (i > NDIRECT)	
+        break;	
+    }	
+  	
+    if(i > NDIRECT){	
+       panic("Extent file allocation exceeded\n");	
+      return EXT_ADDR(ip->addrs[i-1]);	
+    }	
+    uint newDiskBlock = balloc(ip->dev);	
+    // Check if newAddr is contiguos w.r.t to the previous extent	
+        uint len = EXT_LEN(ip->addrs[i-1]);	
+      if( (newDiskBlock == EXT_ADDR(ip->addrs[i-1]) + len)  && EXT_LEN(ip->addrs[i-1]) < 0xff){	
+        //len += 1;	
+        ip->addrs[i-1]  += 1;	
+        //cprintf("Appending to existing block %d. Addr:%d; Len: %d\n", i-1, EXT_ADDR(ip->addrs[i-1]), EXT_LEN(ip->addrs[i-1]));	
+      }	
+      else{	
+     // if not, add a new entry in the table	
+      ip->addrs[i] = GEN_ADDR(newDiskBlock, 1); 	
+      //cprintf("New address %d. At addr table %d\n", newDiskBlock, i);	
+      }	
+   return newDiskBlock;	
+  }
+
 
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0)
@@ -411,6 +459,23 @@ itrunc(struct inode *ip)
   struct buf *bp;
   uint *a;
 
+
+  // Code to clean Extent files	
+  if (ip->type == T_EXT){	
+    for(i = 0; i < NDIRECT; i++){	
+      if(ip->addrs[i]){	
+        uint len = EXT_LEN(ip->addrs[i]);	
+        for(j = 0; j < len; j++){	
+          bfree(ip->dev, EXT_ADDR(ip->addrs[i]) + j);	
+          // cprintf("Freeing block: %d\n", EXT_ADDR(ip->addrs[i]) + j);	
+        }	
+        ip->addrs[i] = 0;	
+      }	
+    }	
+    return;	
+  }	
+
+
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
       bfree(ip->dev, ip->addrs[i]);
@@ -444,7 +509,21 @@ stati(struct inode *ip, struct stat *st)
   st->type = ip->type;
   st->nlink = ip->nlink;
   st->size = ip->size;
+
+  // Get more info for extent files	
+  int i = 0;	
+  if (st->type == T_EXT){	
+    for(i = 0; i < NDIRECT; i++)	
+    {	
+      st->extents[i].addr = EXT_ADDR(ip->addrs[i]);	
+      st->extents[i].len  = EXT_LEN(ip->addrs[i]);	
+    }	
+  }
 }
+
+	  	
+  
+
 
 //PAGEBREAK!
 // Read data from inode.
@@ -490,7 +569,7 @@ writei(struct inode *ip, char *src, uint off, uint n)
     return devsw[ip->major].write(ip, src, n);
   }
 
-  if(off > ip->size || off + n < off)
+  if((off > ip->size || off + n < off) && ip->type != T_EXT)
     return -1;
   if(off + n > MAXFILE*BSIZE)
     return -1;

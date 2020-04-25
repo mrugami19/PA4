@@ -291,6 +291,7 @@ sys_open(void)
   struct file *f;
   struct inode *ip;
 
+  cprintf("Got here\n");
   if(argstr(0, &path) < 0 || argint(1, &omode) < 0)
     return -1;
 

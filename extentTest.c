@@ -1,128 +1,140 @@
 #include "types.h"
-#include "stat.h"
 #include "user.h"
-#include "fs.h"
 #include "fcntl.h"
+#include "stat.h"
 
-void printStat(struct stat *st)
-{
-  //print stat info
-  char *filetype = "";
-  if(st->type == T_EXT){
-    filetype = "extent-based file";
-  }else{
-    filetype = "pointer-based file";
+void writeToNormal();
+void writeToLseek();
+
+int main(){
+
+  //int fd = open("test.txt", O_CREATE|O_RDWR);
+  int fd = open("test.txt", O_CREATE|O_EXTENT|O_RDWR);
+  if (fd <= 0){
+    printf(1, "File open failed\n");
+    exit();
   }
 
-  printf(1, "Type: %s\n", filetype);
-  printf(1, "Device: %d\n", st->dev);
-  printf(1, "Inode #: %d\n", st->ino);
-  printf(1, "Number of links: %d\n", st->nlink);
-  printf(1, "Size: %d\n", st->size);
+  char x[1024];
+  int i;
+  for(i = 0; i < 1024; i++){
+      x[i] = 'a';
+  }
 
-  //extent-based file
-  if(st->type == T_EXT) {
-    int i=0;
-    while(st->addrs[i] && i < NDIRECT+1){
-      //first 3 byte is pointer and remaining 1 byte is length
-      printf(1, "Pointer: %x\n", ((st->addrs[i] & ~0xff) >> 8));
-      printf(1, "Length: %d\n", (st->addrs[i] & 0xff));
-      ++i;
+  for (i = 0; i < 80; i++){
+      int size = write(fd, x, 1024);
+
+      if (size < 1024)
+      {
+        printf(2,"Write failed. Return code %d\n", size);
+        exit();
+      }
+      if (i == 50)
+        writeToNormal("test_normal_1");
+      if(i == 60)
+        writeToNormal("test_normal_2");
+      if(i == 64)
+        writeToLseek("test_lseek_1", -1);
+      if(i == 65)
+        writeToLseek("test_lseek_2", 16);
+      if(i == 70)
+        writeToLseek("test_lseek_3", 700);
+      if(i == 75)
+        writeToLseek("test_lseek_4", 1025);
+  }
+
+  printf(1, "Wrote 80 * 1024 bytes successfully\n");
+  struct stat extFileInfo;
+  int rc = fstat(fd, &extFileInfo);
+  if (rc != 0)
+  {
+    printf(2,"fstat error, retruned %d",rc);
+    exit();
+  }
+
+  printf(1, "File size %d bytes\n", extFileInfo.size);
+  i = 0;
+  uint tot_blocks = 0;
+  while (extFileInfo.extents[i].len){
+    tot_blocks += extFileInfo.extents[i].len;
+    printf(1,"Extent addr:%d. Extent Len:%d\n", extFileInfo.extents[i].addr, extFileInfo.extents[i].len);
+    i++;
+    if (i >= 12)
+      break;
+  }
+
+  if (tot_blocks*512 != extFileInfo.size){
+    printf(2, "Something wrong, total blocks don't match size.!!!");
+  }
+
+  exit();
+
+}
+
+void writeToNormal(char *fileName){
+  int fd = open(fileName, O_CREATE|O_RDWR);
+  
+  if (fd <= 0){
+    printf(1, "File open failed\n");
+    exit();
+  }
+
+  char x[1024];
+  int i;
+  for (i = 0; i < 1024; i++){
+    x[i] = 'a';
+  }
+  
+  for (i = 0; i < 1; i++){
+    int rc;
+    if ((rc = write(fd, x, 1024)) != 1024){
+      printf(2, "Normal File, Write failed. Return code %d\n", rc);
+      exit();
     }
   }
 }
 
-int main(int argc, char *argv[])
-{
+void writeToLseek(char *fileName, off_t offset){
+  off_t off;
+  int fd = open(fileName, O_CREATE|O_RDWR);
 
-  //create a new test file
-  printf(1, "hello mars\n");
+  if (fd <= 0){
+    printf(1, "File open failed\n");
+    exit();
+  }
 
-  int fd1 = open("extent_test1", O_RDWR | O_CREATE);
-  printf(1, "hello world\n");
-  int fd2 = open("extent_test2", O_RDWR | O_CREATE | O_EXTENT);
-  int fd3 = open("extent_test3", O_RDWR | O_CREATE | O_EXTENT);
-  int fd4 = open("extent_test4", O_RDWR | O_CREATE | O_EXTENT);
+  char x[1024];
+  int i;
+  for (i = 0; i < 1024; i++){
+    x[i] = 'x';
+  }
   
-  int regularFd1 = open("extent_test_reg1", O_CREATE | O_RDWR);
-  int regularFd2 = open("extent_test_reg2", O_CREATE | O_RDWR);
-  int regularFd3 = open("extent_test_reg3", O_CREATE | O_RDWR);
-  int regularFd4 = open("extent_test_reg4", O_CREATE | O_RDWR);
-  struct stat st, st2;
+  for (i = 0; i < 1; i++){
+    int rc;
+    if ((rc = write(fd, x, 1024)) != 1024){
+      printf(2, "Normal File, Write failed. Return code %d\n", rc);
+      exit();
+    }
+  }
 
-  printf(1, "In this test, we are making extent based file with really big string\n");
-  //write something in the file
+  //new array to write into file that is offsetted by 16 bytes
+  char y[512];
+  for(i = 0; i < 512; i++){
+    y[i] = 'y';
+  }
 
-  printf(1, "Test1: Not that long string\n");
-  char *prompt1 = "This is not that long string!\n";
-
-  write(fd1, prompt1, strlen(prompt1));
-  write(regularFd1, prompt1, strlen(prompt1));
+  if((off = lseek(fd, offset)) == -1) {
+    printf(1, "lseek failed, returned value: %d\n", off);
+    return;
+  } else {
+    printf(1, "lseek successful, offset is: %d\n", off);
+  }
   
-  printf(1, "Stat info of extent-based file using same string\n");
-  fstat(fd1, &st);
-  printStat(&st);
-
-  printf(1, "Compare to: Stat info of pointer-based file using same string\n");
-  fstat(regularFd1, &st2);
-  printStat(&st2);
- 
-  printf(1, "\n\n\n");
-  printf(1, "Test2: Kind of long string\n");
-  char *prompt2 = "This is kind of long string! This is kind of long string!This is kind of long string!This is kind of long string!This is kind of long string!This is kind of long string!This is kind of long string!This is kind of long string!This is kind of long string!This is kind of long string!This is kind of long string!\n";
-
-  write(fd2, prompt2, strlen(prompt2));
-  write(regularFd2, prompt2, strlen(prompt2));
-  
-  printf(1, "Stat info of extent-based file using same string\n");
-  fstat(fd2, &st);
-  printStat(&st);
-
-  printf(1, "Compare to: Stat info of pointer-based file using same string\n");
-  fstat(regularFd2, &st2);
-  printStat(&st2);
- 
-  printf(1, "\n\n\n");
-  printf(1, "Test3: long string\n");
-  char *prompt3 = "This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! \n This is long string!This is long string!This is long string!This is long string!This is long string! ";
-
-  write(fd3, prompt3, strlen(prompt3));
-write(regularFd3, prompt3, strlen(prompt3));
-  
-  printf(1, "Stat info of extent-based file using same string\n");
-  fstat(fd3, &st);
-  printStat(&st);
-
-  printf(1, "Compare to: Stat info of pointer-based file using same string\n");
-  fstat(regularFd3, &st2);
-  printStat(&st2);
-
-
-  printf(1, "\n\n\n");
-    printf(1, "Test4: super long string\n");
-
-  char *prompt4 = "This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! This is long string! ";
-  
-  write(fd4, prompt4, strlen(prompt4));
-  write(regularFd4, prompt4, strlen(prompt4));
-  
-  printf(1, "Stat info of extent-based file using same string\n");
-  fstat(fd4, &st);
-  printStat(&st);
-
-  printf(1, "Compare to: Stat info of pointer-based file using same string\n");
-  fstat(regularFd4, &st2);
-  printStat(&st2);
-  
-  close(fd1);
-close(fd2);
-close(fd3);
-close(fd4);
-
-  close(regularFd1);
-close(regularFd2);
-close(regularFd3);
-close(regularFd4);
-
-exit();
+  for (i = 0; i < 1; i++){
+    int rc;
+    if ((rc = write(fd, y, 512)) != 512){
+      printf(2, "Normal File, Write failed. Return code %d\n", rc);
+      exit();
+    }
+  }
 }

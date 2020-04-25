@@ -297,7 +297,7 @@ sys_open(void)
 
   if(omode & O_CREATE){
     if(omode & O_EXTENT)
-      ip = create(path, T_EXT_FILE, 0, 0);
+      ip = create(path, T_EXT, 0, 0);
     else
       ip = create(path, T_FILE, 0, 0);
 
@@ -305,7 +305,8 @@ sys_open(void)
       end_op();
       return -1;
     }
-  } else {
+  } 
+    
     if((ip = namei(path)) == 0){
       end_op();
       return -1;
@@ -316,7 +317,7 @@ sys_open(void)
       end_op();
       return -1;
     }
-  }
+  
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)

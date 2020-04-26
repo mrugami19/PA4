@@ -5,11 +5,9 @@
 int main(int argc, char *argv[]){
     
     int fd;
-    //int nvfd = -1;
-    //int boff=-1;
-    // printf(1, "about to open\n");
+    
     fd = open("text.txt", O_CREATE | O_RDWR );
-    //ßprintf(1, "did open\n");
+    
 
     write(fd, "This is for testing purposes. hello! test test test test\n" , 60);
 
@@ -17,12 +15,15 @@ int main(int argc, char *argv[]){
         printf(1, "Error changing pointer\n");
     }
     // invalid offset
-    if (lseek(fd, -1) < 0){
-        printf(1, "Error changing pointer: invalid offset\n");
+    int boff = lseek(fd, -1);
+    if (boff < 0){
+        printf(1, "lseek() failed: invalid offset\n");
     }
+
     //invalid file descriptor
-     if (lseek(-1, 4) < 0){
-        printf(1, "Error changing pointer: invalid file desriptor\n");
+    int bfd = lseek(-1, 4);
+     if (bfd < 0){
+        printf(1, "lseek() failed: invalid file desriptor\n");
     }
 
     write(fd, "UPDATE\n", 7);

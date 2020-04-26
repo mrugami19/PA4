@@ -450,12 +450,16 @@ sys_lseek(void)
   uint n;
 
   // get params
-  if(argfd(0, 0, &f) < 0 || argint(1, (int*)&n) < 0)
+  if(argfd(0, 0, &f) < 0 || argint(1, (int*)&n) < 0){
     return -1;
+  }
+    
 
   //offset must be within file
-  if(n < 0 || n > f->ip->size)
-    return -1;
+  if(n < 0 || n > f->ip->size){
+     return -1;
+  }
+    
   //f->off = n;
   //return f->off;
   return f->off = n;

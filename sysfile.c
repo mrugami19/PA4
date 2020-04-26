@@ -1,9 +1,3 @@
-//
-// File-system system calls.
-// Mostly argument checking, since we don't trust
-// user code, and calls into file.c and fs.c.
-//
-
 #include "types.h"
 #include "defs.h"
 #include "param.h"
@@ -252,7 +246,7 @@ create(char *path, short type, short major, short minor)
   if((ip = dirlookup(dp, name, &off)) != 0){
     iunlockput(dp);
     ilock(ip);
-    if(type == T_FILE && ip->type == T_FILE)
+    if((type == T_FILE && ip->type == T_FILE) || (type == T_EXT && ip->type == T_EXT))
       return ip;
     iunlockput(ip);
     return 0;
@@ -291,37 +285,36 @@ sys_open(void)
   struct file *f;
   struct inode *ip;
 
-  cprintf("Got here\n");
   if(argstr(0, &path) < 0 || argint(1, &omode) < 0)
+    // cprintf("Got here");
     return -1;
-
   begin_op();
 
-  if(omode & O_CREATE){
-    if(omode & O_EXTENT)
-      ip = create(path, T_EXT, 0, 0);
-    else
-      ip = create(path, T_FILE, 0, 0);
-
+  if((omode & O_EXTENT) && (omode && O_CREATE)){ //create extent-based file
+    if((ip = create(path, T_EXT,0,0))==0){
+      end_op();
+      return -1; //cannot create a new file of type extent 
+    }
+  } else if(omode & O_CREATE){ //create regular file
+    ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
       end_op();
       return -1;
     }
-  } 
-    
-    if((ip = namei(path)) == 0){
+  } else { //not creating a file, reading/writing to an existing one
+    if((ip = namei(path)) == 0){ //file doesn't exist
       end_op();
       return -1;
     }
     ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
+    if(ip->type == T_DIR && omode != O_RDONLY){ //can't open directories for write
       iunlockput(ip);
       end_op();
       return -1;
     }
-  
+  }
 
-  if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+  if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){ 
     if(f)
       fileclose(f);
     iunlockput(ip);
@@ -335,7 +328,7 @@ sys_open(void)
   f->ip = ip;
   f->off = 0;
   f->readable = !(omode & O_WRONLY);
-  f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+  f->writable = ((omode & O_WRONLY) || (omode & O_RDWR));
   return fd;
 }
 
@@ -450,24 +443,20 @@ sys_pipe(void)
   return 0;
 }
 
-int sys_lseek(void){
+int
+sys_lseek(void)
+{
   struct file *f;
   uint n;
 
   // get params
-  int fd = argfd(0, 0, &f);
-  int offs = argint(1, (int*)&n);
-
-  if(fd < 0 || offs < 0)
+  if(argfd(0, 0, &f) < 0 || argint(1, (int*)&n) < 0)
     return -1;
 
   //offset must be within file
   if(n < 0 || n > f->ip->size)
     return -1;
-  else{
-    f->off = n;
-  }
-
-  return 0;
-
+  //f->off = n;
+  //return f->off;
+  return f->off = n;
 }

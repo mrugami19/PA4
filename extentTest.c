@@ -21,9 +21,9 @@ int main(){
       x[i] = 'a';
   }
 
-  for (i = 0; i < 80; i++){
+  for (i = 0; i < 70; i++){
       int size = write(fd, x, 1024);
-
+      printf(1, "i: %d size: %d\n", i, size);
       if (size < 1024)
       {
         printf(2,"Write failed. Return code %d\n", size);
@@ -37,10 +37,6 @@ int main(){
         writeToLseek("test_lseek_1", -1);
       if(i == 65)
         writeToLseek("test_lseek_2", 16);
-      if(i == 70)
-        writeToLseek("test_lseek_3", 700);
-      if(i == 75)
-        writeToLseek("test_lseek_4", 1025);
   }
 
   printf(1, "Wrote 80 * 1024 bytes successfully\n");
